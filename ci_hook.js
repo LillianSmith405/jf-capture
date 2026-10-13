@@ -1,5 +1,3 @@
-
-Enter file contents here
 'use strict';
 // 小蜂管家 CI 抓包 hook（GitHub Actions 模拟器环境）
 // 以 Java 层(OkHttp)为主，兼容 x86_64 模拟器 + ARM 转译
