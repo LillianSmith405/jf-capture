@@ -36,7 +36,7 @@ jobs:
           script: |
             set -e
             echo "===== 1. 安装 frida ====="
-            pip install -q frida-tools==17.23.3
+            pip install -q frida==17.23.3 frida-tools
             curl -sL -o /tmp/fs.xz https://github.com/frida/frida/releases/download/17.23.3/frida-server-17.23.3-android-x86_64.xz
             xz -d /tmp/fs.xz
 
