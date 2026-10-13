@@ -1,0 +1,111 @@
+
+Enter file contents here
+name: 小蜂管家云抓包
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'APK 下载地址'
+        required: true
+        default: 'https://aka.doubaocdn.com/s/tKK0BSzV37'
+      capture_seconds:
+        description: '抓包时长（秒）'
+        required: false
+        default: '90'
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载 APK
+        run: |
+          curl -sL -o app.apk "${{ github.event.inputs.apk_url }}"
+          echo "MD5: $(md5sum app.apk | cut -d' ' -f1)"
+          ls -la app.apk
+
+      - name: 启动模拟器并抓包
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          profile: pixel_4
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
+          script: |
+            set -e
+            echo "===== 1. 安装 frida ====="
+            pip install -q frida-tools==17.23.3
+            curl -sL -o /tmp/fs.xz https://github.com/frida/frida/releases/download/17.23.3/frida-server-17.23.3-android-x86_64.xz
+            xz -d /tmp/fs.xz
+
+            echo "===== 2. 安装 APK ====="
+            adb install -r app.apk
+
+            echo "===== 3. 启动 frida-server ====="
+            adb root || true
+            adb wait-for-device
+            adb push /tmp/fs /data/local/tmp/frida-server
+            adb shell chmod 755 /data/local/tmp/frida-server
+            adb shell "nohup /data/local/tmp/frida-server >/dev/null 2>&1 &"
+            sleep 3
+            adb shell "/data/local/tmp/frida-server -t 0 &" || true
+
+            echo "===== 4. 注入抓包 ====="
+            CAP=${{ github.event.inputs.capture_seconds }}
+            frida -U -f com.jf.jlinkiot -l ci_hook.js -o /tmp/jf_out.txt >/dev/null 2>&1 &
+            FPID=$!
+            sleep 15
+
+            echo "===== 5. 自动 UI 操作（同意协议/进入页面）====="
+            python3 - <<'PYEOF'
+import subprocess, re, time
+def adb(*a):
+    return subprocess.run(["adb","shell"]+list(a), capture_output=True, text=True)
+def dump():
+    adb("uiautomator","dump","/sdcard/ui.xml")
+    return adb("cat","/sdcard/ui.xml").stdout
+def tap_text(keywords):
+    try:
+        xml = dump()
+    except Exception:
+        return False
+    for kw in keywords:
+        m = re.search(r'text="([^"]*'+kw+r'[^"]*)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml)
+        if not m:
+            m = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]*text="([^"]*'+kw+r'[^"]*)"', xml)
+        if m:
+            x = (int(m.group(2))+int(m.group(4)))//2
+            y = (int(m.group(3))+int(m.group(5)))//2
+            subprocess.run(["adb","shell","input","tap",str(x),str(y)], capture_output=True)
+            print("tapped:", kw, x, y)
+            return True
+    return False
+for kw in [["同意"],["允许"],["我知道了"],["继续"],["确认"],["确定"]]:
+    if tap_text(kw):
+        time.sleep(2)
+    time.sleep(1)
+PYEOF
+
+            echo "===== 6. 继续抓包 ====="
+            sleep $((CAP - 25 < 0 ? 10 : CAP - 25))
+            kill $FPID 2>/dev/null || true
+            sleep 2
+            echo "===== 抓包输出 ====="
+            cat /tmp/jf_out.txt || echo "(无输出)"
+
+            echo "===== 7. App 状态与日志 ====="
+            adb shell pidof com.jf.jlinkiot && echo "App 运行正常" || echo "App 进程不存在（可能被加固检测闪退）"
+            adb logcat -d > /tmp/logcat.txt || true
+
+      - name: 上传抓包结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jf-capture-output
+          path: |
+            /tmp/jf_out.txt
+            /tmp/logcat.txt
