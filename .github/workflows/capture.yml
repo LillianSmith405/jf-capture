@@ -13,8 +13,8 @@ on:
 
 jobs:
   capture:
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -27,8 +27,8 @@ jobs:
       - name: 启动模拟器并抓包
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
-          arch: x86_64
+          api-level: 30
+          arch: arm64-v8a
           target: google_apis
           profile: pixel_4
           disable-animations: true
@@ -36,13 +36,15 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
           script: >-
             echo "MAIN_SCRIPT_START $(date -u +%H:%M:%S)" > /tmp/main_script_ran.txt;
+            echo "HOST=$(uname -m)";
+            if [ -e /dev/kvm ]; then echo "KVM=yes"; else echo "KVM=no"; fi;
             echo "===== boot 确认 =====";
             adb wait-for-device;
-            for i in $(seq 1 30); do BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r'); echo "boot_check[$i]=$BOOT"; if [ "$BOOT" = "1" ]; then break; fi; sleep 5; done;
+            for i in $(seq 1 40); do BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r'); echo "boot_check[$i]=$BOOT"; if [ "$BOOT" = "1" ]; then break; fi; sleep 5; done;
             echo "boot_final=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')";
             echo "===== 安装 frida =====";
             pip install -q frida==17.23.3 frida-tools;
-            curl -sL -o /tmp/fs.xz https://github.com/frida/frida/releases/download/17.23.3/frida-server-17.23.3-android-x86_64.xz;
+            curl -sL -o /tmp/fs.xz https://github.com/frida/frida/releases/download/17.23.3/frida-server-17.23.3-android-arm64.xz;
             xz -d -f /tmp/fs.xz;
             ls -la /tmp/fs;
             echo "===== 安装 APK =====";
