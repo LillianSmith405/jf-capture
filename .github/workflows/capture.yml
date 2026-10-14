@@ -35,25 +35,19 @@ jobs:
           emulator-boot-timeout: 600
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
           script: >-
-            set -x;
             echo "MAIN_SCRIPT_START $(date -u +%H:%M:%S)" > /tmp/main_script_ran.txt;
-            echo "===== 1. boot 确认 =====";
+            echo "===== boot 确认 =====";
             adb wait-for-device;
-            for i in $(seq 1 30); do
-              BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r');
-              echo "boot_check[$i]=$BOOT";
-              [ "$BOOT" = "1" ] && break;
-              sleep 5;
-            done;
+            for i in $(seq 1 30); do BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r'); echo "boot_check[$i]=$BOOT"; if [ "$BOOT" = "1" ]; then break; fi; sleep 5; done;
             echo "boot_final=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')";
-            echo "===== 2. 安装 frida =====";
-            pip install -q frida==17.23.3 frida-tools 2>&1 | tail -2;
+            echo "===== 安装 frida =====";
+            pip install -q frida==17.23.3 frida-tools;
             curl -sL -o /tmp/fs.xz https://github.com/frida/frida/releases/download/17.23.3/frida-server-17.23.3-android-x86_64.xz;
             xz -d -f /tmp/fs.xz;
             ls -la /tmp/fs;
-            echo "===== 3. 安装 APK =====";
+            echo "===== 安装 APK =====";
             adb install -r app.apk && echo "APK_INSTALL_OK" || echo "APK_INSTALL_FAIL";
-            echo "===== 4. 启动 frida-server =====";
+            echo "===== 启动 frida-server =====";
             adb root || true;
             adb wait-for-device;
             adb push /tmp/fs /data/local/tmp/frida-server;
@@ -61,22 +55,23 @@ jobs:
             adb shell "nohup /data/local/tmp/frida-server >/dev/null 2>&1 &";
             sleep 3;
             adb shell "ps -A | grep frida" || echo "FRIDA_SERVER_NOT_RUNNING";
-            echo "===== 5. 注入抓包 =====";
+            echo "===== 注入抓包 =====";
             CAP=${{ github.event.inputs.capture_seconds }};
             frida -U -f com.jf.jlinkiot -l ci_hook.js -o /tmp/jf_out.txt 2>/tmp/frida_err.txt & FPID=$!;
             echo "frida_pid=$FPID";
             sleep 15;
-            echo "===== 6. 自动 UI 操作 =====";
+            echo "===== 自动 UI 操作 =====";
             python3 ui_auto.py || echo "UI_AUTO_FAIL";
-            echo "===== 7. 等待抓包 =====";
-            sleep $((CAP - 25 < 10 ? 10 : CAP - 25));
+            echo "===== 等待抓包 =====";
+            SLEEP=10; if [ "$CAP" -gt 35 ]; then SLEEP=$((CAP - 25)); fi;
+            sleep $SLEEP;
             kill $FPID 2>/dev/null || true;
             sleep 2;
             echo "===== frida 输出 =====";
             cat /tmp/jf_out.txt || echo "(无 jf_out 输出)";
             echo "===== frida 错误 =====";
             cat /tmp/frida_err.txt || echo "(无 frida_err)";
-            echo "===== 8. App 状态 =====";
+            echo "===== App 状态 =====";
             adb shell pidof com.jf.jlinkiot && echo "APP_RUNNING" || echo "APP_NOT_RUNNING";
             adb logcat -d > /tmp/logcat.txt || true;
             echo "MAIN_SCRIPT_DONE $(date -u +%H:%M:%S)" >> /tmp/main_script_ran.txt
