@@ -13,7 +13,7 @@ on:
 
 jobs:
   capture:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -27,8 +27,8 @@ jobs:
       - name: 启动模拟器并抓包
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
-          arch: arm64-v8a
+          api-level: 25
+          arch: x86_64
           target: google_apis
           profile: pixel_4
           disable-animations: true
@@ -36,45 +36,38 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
           script: >-
             echo "MAIN_SCRIPT_START $(date -u +%H:%M:%S)" > /tmp/main_script_ran.txt;
-            echo "HOST=$(uname -m)";
-            if [ -e /dev/kvm ]; then echo "KVM=yes"; else echo "KVM=no"; fi;
             echo "===== boot 确认 =====";
             adb wait-for-device;
             for i in $(seq 1 40); do BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r'); echo "boot_check[$i]=$BOOT"; if [ "$BOOT" = "1" ]; then break; fi; sleep 5; done;
             echo "boot_final=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')";
-            echo "===== 安装 frida =====";
-            pip install -q frida==17.23.3 frida-tools;
-            curl -sL -o /tmp/fs.xz https://github.com/frida/frida/releases/download/17.23.3/frida-server-17.23.3-android-arm64.xz;
-            xz -d -f /tmp/fs.xz;
-            ls -la /tmp/fs;
             echo "===== 安装 APK =====";
             adb install -r app.apk && echo "APK_INSTALL_OK" || echo "APK_INSTALL_FAIL";
-            echo "===== 启动 frida-server =====";
-            adb root || true;
-            adb wait-for-device;
-            adb push /tmp/fs /data/local/tmp/frida-server;
-            adb shell chmod 755 /data/local/tmp/frida-server;
-            adb shell "nohup /data/local/tmp/frida-server >/dev/null 2>&1 &";
-            sleep 3;
-            adb shell "ps -A | grep frida" || echo "FRIDA_SERVER_NOT_RUNNING";
-            echo "===== 注入抓包 =====";
-            CAP=${{ github.event.inputs.capture_seconds }};
-            frida -U -f com.jf.jlinkiot -l ci_hook.js -o /tmp/jf_out.txt 2>/tmp/frida_err.txt & FPID=$!;
-            echo "frida_pid=$FPID";
-            sleep 15;
-            echo "===== 自动 UI 操作 =====";
-            python3 ui_auto.py || echo "UI_AUTO_FAIL";
-            echo "===== 等待抓包 =====";
-            SLEEP=10; if [ "$CAP" -gt 35 ]; then SLEEP=$((CAP - 25)); fi;
-            sleep $SLEEP;
-            kill $FPID 2>/dev/null || true;
-            sleep 2;
-            echo "===== frida 输出 =====";
-            cat /tmp/jf_out.txt || echo "(无 jf_out 输出)";
-            echo "===== frida 错误 =====";
-            cat /tmp/frida_err.txt || echo "(无 frida_err)";
-            echo "===== App 状态 =====";
-            adb shell pidof com.jf.jlinkiot && echo "APP_RUNNING" || echo "APP_NOT_RUNNING";
+            echo "===== 启动 App =====";
+            adb shell monkey -p com.jf.jlinkiot -c android.intent.category.LAUNCHER 1 || echo "MONKEY_FAIL";
+            echo "===== 等待 App 初始化（翻译运行较慢）=====";
+            sleep 200;
+            PID=$(adb shell pidof com.jf.jlinkiot 2>/dev/null | tr -d '\r');
+            echo "PID=$PID";
+            if [ -n "$PID" ]; then echo "===== 进程信息 ====="; fi;
+            if [ -n "$PID" ]; then adb shell "ps -A | grep jlinkiot" || echo "NO_PROC"; fi;
+            if [ -n "$PID" ]; then adb shell "su -c 'cat /proc/$PID/maps'" > /tmp/maps.txt || echo "MAPS_FAIL"; fi;
+            if [ -n "$PID" ]; then echo "===== 内存 grep AesKey ====="; fi;
+            if [ -n "$PID" ]; then adb shell "su -c 'grep -a -o -E \"AesKey[^\\\"]{0,160}\" /proc/$PID/mem'" > /tmp/memgrep1.txt 2>/tmp/memgrep1_err.txt; fi;
+            if [ -n "$PID" ]; then echo "memgrep1_len=$(wc -c < /tmp/memgrep1.txt 2>/dev/null)"; fi;
+            if [ -n "$PID" ]; then cat /tmp/memgrep1.txt | head -50; fi;
+            if [ -n "$PID" ]; then echo "===== 内存 grep aesKey/其他 ====="; fi;
+            if [ -n "$PID" ]; then adb shell "su -c 'grep -a -o -E \"aesKey[^\\\"]{0,160}\" /proc/$PID/mem'" > /tmp/memgrep2.txt 2>/tmp/memgrep2_err.txt; fi;
+            if [ -n "$PID" ]; then echo "memgrep2_len=$(wc -c < /tmp/memgrep2.txt 2>/dev/null)"; fi;
+            if [ -n "$PID" ]; then cat /tmp/memgrep2.txt | head -50; fi;
+            if [ -n "$PID" ]; then echo "===== 内存 grep authSignInfo JSON ====="; fi;
+            if [ -n "$PID" ]; then adb shell "su -c 'grep -a -o -E \"authSignInfo.{0,300}\" /proc/$PID/mem'" > /tmp/memgrep3.txt 2>/dev/null; fi;
+            if [ -n "$PID" ]; then echo "memgrep3_len=$(wc -c < /tmp/memgrep3.txt 2>/dev/null)"; fi;
+            if [ -n "$PID" ]; then cat /tmp/memgrep3.txt | head -20; fi;
+            if [ -n "$PID" ]; then echo "===== 内存 grep XCloudSDK ====="; fi;
+            if [ -n "$PID" ]; then adb shell "su -c 'grep -a -o -E \"XCloudSDK[A-Za-z0-9_.]{0,60}\" /proc/$PID/mem'" > /tmp/memgrep4.txt 2>/dev/null; fi;
+            if [ -n "$PID" ]; then echo "memgrep4_len=$(wc -c < /tmp/memgrep4.txt 2>/dev/null)"; fi;
+            if [ -n "$PID" ]; then cat /tmp/memgrep4.txt | head -20; fi;
+            if [ -z "$PID" ]; then echo "APP_NOT_RUNNING"; fi;
             adb logcat -d > /tmp/logcat.txt || true;
             echo "MAIN_SCRIPT_DONE $(date -u +%H:%M:%S)" >> /tmp/main_script_ran.txt
 
@@ -84,7 +77,12 @@ jobs:
         with:
           name: jf-capture-output
           path: |
-            /tmp/jf_out.txt
-            /tmp/frida_err.txt
+            /tmp/maps.txt
+            /tmp/memgrep1.txt
+            /tmp/memgrep1_err.txt
+            /tmp/memgrep2.txt
+            /tmp/memgrep2_err.txt
+            /tmp/memgrep3.txt
+            /tmp/memgrep4.txt
             /tmp/logcat.txt
             /tmp/main_script_ran.txt
