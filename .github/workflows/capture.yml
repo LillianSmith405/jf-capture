@@ -33,43 +33,35 @@ jobs:
           profile: pixel_4
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
-          script: |
-            set -e
-            echo "===== 1. 安装 frida ====="
-            pip install -q frida==17.23.3 frida-tools
-            curl -sL -o /tmp/fs.xz https://github.com/frida/frida/releases/download/17.23.3/frida-server-17.23.3-android-x86_64.xz
-            xz -d /tmp/fs.xz
-
-            echo "===== 2. 安装 APK ====="
-            adb install -r app.apk
-
-            echo "===== 3. 启动 frida-server ====="
-            adb root || true
-            adb wait-for-device
-            adb push /tmp/fs /data/local/tmp/frida-server
-            adb shell chmod 755 /data/local/tmp/frida-server
-            adb shell "nohup /data/local/tmp/frida-server >/dev/null 2>&1 &"
-            sleep 3
-            adb shell "/data/local/tmp/frida-server -t 0 &" || true
-
-            echo "===== 4. 注入抓包 ====="
-            CAP=${{ github.event.inputs.capture_seconds }}
-            frida -U -f com.jf.jlinkiot -l ci_hook.js -o /tmp/jf_out.txt >/dev/null 2>&1 &
-            FPID=$!
-            sleep 15
-
-            echo "===== 5. 自动 UI 操作（同意协议/进入页面）====="
-            python3 ui_auto.py
-
-            echo "===== 6. 继续抓包 ====="
-            sleep $((CAP - 25 < 0 ? 10 : CAP - 25))
-            kill $FPID 2>/dev/null || true
-            sleep 2
-            echo "===== 抓包输出 ====="
-            cat /tmp/jf_out.txt || echo "(无输出)"
-
-            echo "===== 7. App 状态与日志 ====="
-            adb shell pidof com.jf.jlinkiot && echo "App 运行正常" || echo "App 进程不存在（可能被加固检测闪退）"
+          script: >-
+            set -e;
+            echo "===== 1. 安装 frida =====";
+            pip install -q frida==17.23.3 frida-tools;
+            curl -sL -o /tmp/fs.xz https://github.com/frida/frida/releases/download/17.23.3/frida-server-17.23.3-android-x86_64.xz;
+            xz -d /tmp/fs.xz;
+            echo "===== 2. 安装 APK =====";
+            adb install -r app.apk;
+            echo "===== 3. 启动 frida-server =====";
+            adb root || true;
+            adb wait-for-device;
+            adb push /tmp/fs /data/local/tmp/frida-server;
+            adb shell chmod 755 /data/local/tmp/frida-server;
+            adb shell "nohup /data/local/tmp/frida-server >/dev/null 2>&1 &";
+            sleep 3;
+            echo "===== 4. 注入抓包 =====";
+            CAP=${{ github.event.inputs.capture_seconds }};
+            frida -U -f com.jf.jlinkiot -l ci_hook.js -o /tmp/jf_out.txt >/dev/null 2>&1 & FPID=$!;
+            sleep 15;
+            echo "===== 5. 自动 UI 操作（同意协议/进入页面）=====";
+            python3 ui_auto.py;
+            echo "===== 6. 继续抓包 =====";
+            sleep $((CAP - 25 < 0 ? 10 : CAP - 25));
+            kill $FPID 2>/dev/null || true;
+            sleep 2;
+            echo "===== 抓包输出 =====";
+            cat /tmp/jf_out.txt || echo "(无输出)";
+            echo "===== 7. App 状态与日志 =====";
+            adb shell pidof com.jf.jlinkiot && echo "App 运行正常" || echo "App 进程不存在（可能被加固检测闪退）";
             adb logcat -d > /tmp/logcat.txt || true
 
       - name: 上传抓包结果
