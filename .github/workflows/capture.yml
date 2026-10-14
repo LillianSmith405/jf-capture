@@ -28,7 +28,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 25
-          arch: x86_64
+          arch: x86
           target: google_apis
           profile: pixel_4
           disable-animations: true
@@ -40,31 +40,32 @@ jobs:
             adb wait-for-device;
             for i in $(seq 1 40); do BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r'); echo "boot_check[$i]=$BOOT"; if [ "$BOOT" = "1" ]; then break; fi; sleep 5; done;
             echo "boot_final=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')";
+            echo "ABILIST=$(adb shell getprop ro.product.cpu.abilist 2>/dev/null | tr -d '\r')";
             echo "===== 安装 APK =====";
             adb install -r app.apk && echo "APK_INSTALL_OK" || echo "APK_INSTALL_FAIL";
             echo "===== 启动 App =====";
             adb shell monkey -p com.jf.jlinkiot -c android.intent.category.LAUNCHER 1 || echo "MONKEY_FAIL";
             echo "===== 等待 App 初始化（翻译运行较慢）=====";
-            sleep 200;
+            sleep 240;
             PID=$(adb shell pidof com.jf.jlinkiot 2>/dev/null | tr -d '\r');
             echo "PID=$PID";
             if [ -n "$PID" ]; then echo "===== 进程信息 ====="; fi;
             if [ -n "$PID" ]; then adb shell "ps -A | grep jlinkiot" || echo "NO_PROC"; fi;
-            if [ -n "$PID" ]; then adb shell "su -c 'cat /proc/$PID/maps'" > /tmp/maps.txt || echo "MAPS_FAIL"; fi;
+            if [ -n "$PID" ]; then adb shell "cat /proc/$PID/maps" > /tmp/maps.txt || echo "MAPS_FAIL"; fi;
             if [ -n "$PID" ]; then echo "===== 内存 grep AesKey ====="; fi;
-            if [ -n "$PID" ]; then adb shell "su -c 'grep -a -o -E \"AesKey[^\\\"]{0,160}\" /proc/$PID/mem'" > /tmp/memgrep1.txt 2>/tmp/memgrep1_err.txt; fi;
+            if [ -n "$PID" ]; then adb shell "grep -a -o -E \"AesKey[^\\\"]{0,160}\" /proc/$PID/mem" > /tmp/memgrep1.txt 2>/tmp/memgrep1_err.txt; fi;
             if [ -n "$PID" ]; then echo "memgrep1_len=$(wc -c < /tmp/memgrep1.txt 2>/dev/null)"; fi;
             if [ -n "$PID" ]; then cat /tmp/memgrep1.txt | head -50; fi;
             if [ -n "$PID" ]; then echo "===== 内存 grep aesKey/其他 ====="; fi;
-            if [ -n "$PID" ]; then adb shell "su -c 'grep -a -o -E \"aesKey[^\\\"]{0,160}\" /proc/$PID/mem'" > /tmp/memgrep2.txt 2>/tmp/memgrep2_err.txt; fi;
+            if [ -n "$PID" ]; then adb shell "grep -a -o -E \"aesKey[^\\\"]{0,160}\" /proc/$PID/mem" > /tmp/memgrep2.txt 2>/tmp/memgrep2_err.txt; fi;
             if [ -n "$PID" ]; then echo "memgrep2_len=$(wc -c < /tmp/memgrep2.txt 2>/dev/null)"; fi;
             if [ -n "$PID" ]; then cat /tmp/memgrep2.txt | head -50; fi;
             if [ -n "$PID" ]; then echo "===== 内存 grep authSignInfo JSON ====="; fi;
-            if [ -n "$PID" ]; then adb shell "su -c 'grep -a -o -E \"authSignInfo.{0,300}\" /proc/$PID/mem'" > /tmp/memgrep3.txt 2>/dev/null; fi;
+            if [ -n "$PID" ]; then adb shell "grep -a -o -E \"authSignInfo.{0,300}\" /proc/$PID/mem" > /tmp/memgrep3.txt 2>/dev/null; fi;
             if [ -n "$PID" ]; then echo "memgrep3_len=$(wc -c < /tmp/memgrep3.txt 2>/dev/null)"; fi;
             if [ -n "$PID" ]; then cat /tmp/memgrep3.txt | head -20; fi;
             if [ -n "$PID" ]; then echo "===== 内存 grep XCloudSDK ====="; fi;
-            if [ -n "$PID" ]; then adb shell "su -c 'grep -a -o -E \"XCloudSDK[A-Za-z0-9_.]{0,60}\" /proc/$PID/mem'" > /tmp/memgrep4.txt 2>/dev/null; fi;
+            if [ -n "$PID" ]; then adb shell "grep -a -o -E \"XCloudSDK[A-Za-z0-9_.]{0,60}\" /proc/$PID/mem" > /tmp/memgrep4.txt 2>/dev/null; fi;
             if [ -n "$PID" ]; then echo "memgrep4_len=$(wc -c < /tmp/memgrep4.txt 2>/dev/null)"; fi;
             if [ -n "$PID" ]; then cat /tmp/memgrep4.txt | head -20; fi;
             if [ -z "$PID" ]; then echo "APP_NOT_RUNNING"; fi;
